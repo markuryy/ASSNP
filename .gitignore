@@ -41,3 +41,8 @@ pnpm-lock.yaml
 
 # bun
 bun-lock.yaml
+
+preview_*.png
+output.bmp
+temp_output.png
+src-pyloid/assets/print-job.test
