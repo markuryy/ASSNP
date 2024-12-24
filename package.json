@@ -19,6 +19,9 @@
     "init:macos": "python3 -m venv venv-pyloid && ./venv-pyloid/bin/pip install -r requirements.txt"
   },
   "dependencies": {
+    "github-markdown-css": "^5.8.1",
+    "html2canvas": "^1.4.1",
+    "marked": "^15.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

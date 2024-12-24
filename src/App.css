@@ -62,12 +62,12 @@ main {
 }
 
 .settings-bar {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1rem;
   padding: 1rem;
   background-color: var(--bg-secondary);
   border-radius: 8px;
-  flex-wrap: wrap;
 }
 
 .setting-group {
@@ -81,14 +81,34 @@ main {
   color: var(--text-secondary);
 }
 
-.setting-group input {
-  width: 80px;
+.setting-group input[type="number"],
+.setting-group select {
+  width: 100%;
   padding: 0.5rem;
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-primary);
   font-size: 0.875rem;
+}
+
+.setting-group.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.setting-group.checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent-primary);
+}
+
+.setting-group input:disabled,
+.setting-group select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .text-editor {
@@ -268,25 +288,4 @@ button:disabled {
     min-height: 300px;
     height: 50vh;
   }
-}
-
-.setting-group select {
-  width: 200px;
-  padding: 0.5rem;
-  background-color: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.setting-group select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.setting-group select option {
-  background-color: var(--bg-tertiary);
-  color: var(--text-primary);
 }

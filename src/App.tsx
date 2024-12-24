@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import './App.css';
+import { marked } from 'marked';
+import 'github-markdown-css/github-markdown.css';
 
 function App() {
   const [text, setText] = useState('');
@@ -14,6 +16,7 @@ function App() {
   const [previewProgress, setPreviewProgress] = useState<string>('');
   const [printers, setPrinters] = useState<Array<{ name: string, url: string }>>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<string>('');
+  const [isMarkdownMode, setIsMarkdownMode] = useState(false);
 
   useEffect(() => {
     // Set up event listeners
@@ -81,7 +84,47 @@ function App() {
   const handlePreview = async () => {
     try {
       setStatus('Generating preview...');
-      await window.pyloid.TextPrinterAPI.preview_text(text, width, dpi, fontSize, margin);
+      if (isMarkdownMode) {
+        // Create a hidden div for rendering
+        const tempDiv = document.createElement('div');
+        tempDiv.className = 'markdown-body';
+        tempDiv.style.width = '576px'; // Must be exactly 576px
+        tempDiv.style.maxWidth = '576px';
+        tempDiv.style.padding = `${margin * 37.8}px`;
+        tempDiv.style.fontSize = `${fontSize}px`;
+        tempDiv.style.color = 'black';
+        tempDiv.style.backgroundColor = 'white';
+        tempDiv.style.position = 'absolute';
+        tempDiv.style.left = '-9999px'; // Hide off-screen
+        tempDiv.innerHTML = await marked(text);
+        document.body.appendChild(tempDiv);
+
+        // Use html2canvas to convert the rendered markdown to an image
+        const html2canvas = (await import('html2canvas')).default;
+        const canvas = await html2canvas(tempDiv, {
+          backgroundColor: '#ffffff',
+          scale: 1,
+          width: 576,
+          windowWidth: 576
+        });
+        
+        document.body.removeChild(tempDiv);
+        
+        // Convert canvas to blob and create preview URL
+        const blob = await new Promise<Blob>(resolve => canvas.toBlob(blob => resolve(blob!)));
+        const previewUrl = URL.createObjectURL(blob);
+        setPreview(previewUrl);
+        
+        // Calculate length in cm (canvas height in pixels / DPI * 2.54 cm/inch)
+        const lengthCm = (canvas.height / dpi) * 2.54;
+        setStatus(`Length: ${lengthCm.toFixed(1)}cm`);
+        
+        // Store the canvas for printing
+        window.pyloid.TextPrinterAPI.store_canvas_data(canvas.toDataURL());
+      } else {
+        // Use existing preview method for plain text
+        await window.pyloid.TextPrinterAPI.preview_text(text, width, dpi, fontSize, margin);
+      }
     } catch (error) {
       setStatus('Error: ' + error);
     }
@@ -121,6 +164,18 @@ function App() {
             </div>
 
             <div className="setting-group">
+              <label>Font Size (pt)</label>
+              <input 
+                type="number" 
+                value={fontSize}
+                onChange={(e) => setFontSize(Number(e.target.value))}
+                min={8}
+                max={72}
+                step={1}
+              />
+            </div>
+
+            <div className="setting-group">
               <label>Margin (cm)</label>
               <input 
                 type="number" 
@@ -144,16 +199,14 @@ function App() {
               />
             </div>
 
-            <div className="setting-group">
-              <label>Font Size (pt)</label>
-              <input 
-                type="number" 
-                value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))}
-                min={8}
-                max={72}
-                step={1}
+            <div className="setting-group checkbox">
+              <input
+                type="checkbox"
+                checked={isMarkdownMode}
+                onChange={(e) => setIsMarkdownMode(e.target.checked)}
+                id="markdown-mode"
               />
+              <label htmlFor="markdown-mode">Markdown Mode</label>
             </div>
           </div>
 
@@ -161,7 +214,7 @@ function App() {
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Enter your text here..."
+              placeholder={isMarkdownMode ? "Enter markdown text here..." : "Enter your text here..."}
               spellCheck={false}
             />
           </div>

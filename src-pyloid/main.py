@@ -82,11 +82,12 @@ class PrinterThread(QThread):
             self.progress.emit("Converting to printer format...")
             
             # Save the image temporarily
-            temp_path = "temp_output.png"
+            temp_path = f"temp_output_{uuid.uuid4()}.png"
             self.image.save(temp_path)
             
-            # Convert to BMP and flip using magick instead of convert
-            os.system(f"magick {temp_path} -monochrome -colors 2 -flip BMP3:output.bmp")
+            # Convert to BMP and flip using magick
+            output_bmp = f"output_{uuid.uuid4()}.bmp"
+            os.system(f"magick {temp_path} -monochrome -colors 2 -flip BMP3:{output_bmp}")
             
             self.progress.emit("Sending to printer...")
             
@@ -103,11 +104,14 @@ class PrinterThread(QThread):
                 raise Exception("Invalid printer URL")
                 
             # Use the full IPP URL
-            os.system(f'ipptool -tv -f output.bmp "{printer_url}" -d fileType=image/reverse-encoding-bmp print-job.test')
+            os.system(f'ipptool -tv -f {output_bmp} "{printer_url}" -d fileType=image/reverse-encoding-bmp print-job.test')
             
             # Cleanup
-            os.remove(temp_path)
-            os.remove("output.bmp")
+            try:
+                os.remove(temp_path)
+                os.remove(output_bmp)
+            except:
+                pass
             
             self.finished.emit(f"Print job completed successfully ({self.length_cm:.1f}cm)")
         except Exception as e:
@@ -116,8 +120,8 @@ class PrinterThread(QThread):
             try:
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
-                if os.path.exists("output.bmp"):
-                    os.remove("output.bmp")
+                if os.path.exists(output_bmp):
+                    os.remove(output_bmp)
             except:
                 pass
 
@@ -404,6 +408,39 @@ class TextPrinterAPI(PyloidAPI):
     def set_printer(self, printer_url: str):
         """Set the current printer"""
         self.current_printer = printer_url
+
+    @Bridge(str, result=None)
+    def store_canvas_data(self, canvas_data: str):
+        """Store canvas data for printing"""
+        try:
+            # Remove the data URL prefix
+            image_data = canvas_data.split(',')[1]
+            
+            import base64
+            import io
+            from PIL import Image
+            
+            # Load and convert image
+            image_bytes = base64.b64decode(image_data)
+            image = Image.open(io.BytesIO(image_bytes))
+            
+            # Ensure exact 576px width
+            if image.width != 576:
+                height = int((576 / image.width) * image.height)
+                image = image.resize((576, height), Image.Resampling.LANCZOS)
+            
+            # Set the DPI metadata to match the printer's requirements
+            image.info['dpi'] = (203, 203)  # ASSNP uses 203 DPI (8 dots/mm)
+            
+            # Convert to monochrome (1-bit)
+            image = image.convert('1')
+            
+            # Store for printing
+            self.current_image = image
+            self.current_length = (image.height / 203) * 2.54  # Use 203 DPI for length calculation
+            
+        except Exception as e:
+            print(f"Error storing canvas data: {str(e)}")
 
     def __del__(self):
         # Clean up any remaining preview file
