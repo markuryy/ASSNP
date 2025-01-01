@@ -289,3 +289,22 @@ button:disabled {
     height: 50vh;
   }
 }
+
+.setting-group.image-path {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.setting-group.image-path input {
+  flex: 1;
+  min-width: 200px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.setting-group.image-path button {
+  padding: 4px 12px;
+  white-space: nowrap;
+}

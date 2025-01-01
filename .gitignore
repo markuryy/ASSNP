@@ -46,3 +46,4 @@ preview_*.png
 output.bmp
 temp_output.png
 src-pyloid/assets/print-job.test
+output*.bmp

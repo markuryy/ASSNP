@@ -17,6 +17,7 @@ function App() {
   const [printers, setPrinters] = useState<Array<{ name: string, url: string }>>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<string>('');
   const [isMarkdownMode, setIsMarkdownMode] = useState(false);
+  const [imagePath, setImagePath] = useState('');
 
   useEffect(() => {
     // Set up event listeners
@@ -140,6 +141,17 @@ function App() {
     }
   };
 
+  const handleImagePathSubmit = async () => {
+    try {
+      setPreviewProgress('Preparing image...');
+      const result = await window.pyloid.TextPrinterAPI.prepare_image_file(imagePath);
+      setStatus(result);
+    } catch (error) {
+      setStatus('Error: ' + error);
+      setPreviewProgress('');
+    }
+  };
+
   return (
     <div className="app">
       <main>
@@ -208,6 +220,16 @@ function App() {
               />
               <label htmlFor="markdown-mode">Markdown Mode</label>
             </div>
+
+            <div className="setting-group">
+              <label>Image Path</label>
+              <input
+                type="text"
+                value={imagePath}
+                onChange={(e) => setImagePath(e.target.value)}
+                placeholder="Enter image file path..."
+              />
+            </div>
           </div>
 
           <div className="text-editor">
@@ -227,8 +249,14 @@ function App() {
               {previewProgress ? 'Generating...' : 'Preview'}
             </button>
             <button 
+              onClick={handleImagePathSubmit}
+              disabled={!imagePath.trim() || previewProgress !== ''}
+            >
+              {previewProgress ? 'Loading...' : 'Load Image'}
+            </button>
+            <button 
               onClick={handlePrint} 
-              disabled={!text.trim() || !preview || printProgress !== ''}
+              disabled={(!text.trim() && !imagePath.trim()) || !preview || printProgress !== ''}
             >
               {printProgress ? 'Printing...' : 'Print'}
             </button>

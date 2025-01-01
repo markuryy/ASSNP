@@ -10,6 +10,7 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 from PySide6.QtCore import QThread, Signal
 import uuid
+from pathlib import Path
 
 app = Pyloid(app_name="ASSNP", single_instance=True)
 
@@ -68,9 +69,9 @@ class PrinterThread(QThread):
     finished = Signal(str)
     error = Signal(str)
 
-    def __init__(self, image, length_cm, printer_url):
+    def __init__(self, image_path, length_cm, printer_url):
         super().__init__()
-        self.image = image
+        self.image_path = image_path
         self.length_cm = length_cm
         self.printer_url = printer_url
 
@@ -79,16 +80,6 @@ class PrinterThread(QThread):
             if not self.printer_url:
                 raise Exception("No printer selected")
 
-            self.progress.emit("Converting to printer format...")
-            
-            # Save the image temporarily
-            temp_path = f"temp_output_{uuid.uuid4()}.png"
-            self.image.save(temp_path)
-            
-            # Convert to BMP and flip using magick
-            output_bmp = f"output_{uuid.uuid4()}.bmp"
-            os.system(f"magick {temp_path} -monochrome -colors 2 -flip BMP3:{output_bmp}")
-            
             self.progress.emit("Sending to printer...")
             
             # Clean up the printer URL - ensure it's in the correct format
@@ -103,13 +94,13 @@ class PrinterThread(QThread):
             if not printer_url:
                 raise Exception("Invalid printer URL")
                 
-            # Use the full IPP URL
-            os.system(f'ipptool -tv -f {output_bmp} "{printer_url}" -d fileType=image/reverse-encoding-bmp print-job.test')
+            # Use the full IPP URL with the image path directly
+            os.system(f'ipptool -tv -f {self.image_path} "{printer_url}" -d fileType=image/reverse-encoding-bmp print-job.test')
             
             # Cleanup
             try:
-                os.remove(temp_path)
-                os.remove(output_bmp)
+                if os.path.exists(self.image_path):
+                    os.remove(self.image_path)
             except:
                 pass
             
@@ -118,10 +109,8 @@ class PrinterThread(QThread):
             self.error.emit(f"Error: {str(e)}")
             # Cleanup on error
             try:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-                if os.path.exists(output_bmp):
-                    os.remove(output_bmp)
+                if os.path.exists(self.image_path):
+                    os.remove(self.image_path)
             except:
                 pass
 
@@ -346,9 +335,17 @@ class TextPrinterAPI(PyloidAPI):
         """Print the currently previewed image"""
         if not self.current_image:
             return "Error: No preview available"
+        
+        if hasattr(self, 'current_bmp_path') and os.path.exists(self.current_bmp_path):
+            # For images, use the BMP file directly
+            temp_path = self.current_bmp_path
+        else:
+            # For text/markdown, use the current image
+            temp_path = f"temp_output_{uuid.uuid4()}.png"
+            self.current_image.save(temp_path)
             
-        # Create and start the printer thread with current image
-        self.printer_thread = PrinterThread(self.current_image, self.current_length, self.current_printer)
+        # Create and start the printer thread with the file path
+        self.printer_thread = PrinterThread(temp_path, self.current_length, self.current_printer)
         self.printer_thread.progress.connect(self.on_progress)
         self.printer_thread.finished.connect(self.on_finished)
         self.printer_thread.error.connect(self.on_error)
@@ -441,6 +438,79 @@ class TextPrinterAPI(PyloidAPI):
             
         except Exception as e:
             print(f"Error storing canvas data: {str(e)}")
+
+    @Bridge(str, result=str)
+    def prepare_image_file(self, file_path: str):
+        """Prepare an image file for printing"""
+        try:
+            # Validate file exists
+            if not os.path.exists(file_path):
+                raise Exception(f"File not found: {file_path}")
+            
+            self.window.emit('preview_progress', {"message": "Converting to printer format..."})
+            
+            # Generate unique temp filenames
+            temp_output = f"temp_output_{uuid.uuid4()}.png"
+            output_bmp = f"output_{uuid.uuid4()}.bmp"
+            
+            # First resize to a narrower width (e.g., 500px) and save temporarily
+            image = Image.open(file_path)
+            target_width = 500  # Wider than before (was 400)
+            height = int((target_width / image.width) * image.height)
+            resized = image.resize((target_width, height), Image.Resampling.LANCZOS)
+            
+            # Create a new white image of exactly 576px width
+            final_image = Image.new('RGB', (576, height), 'white')
+            
+            # Paste the resized image in the center (less padding)
+            paste_x = (576 - target_width) // 2
+            final_image.paste(resized, (paste_x, 0))
+            
+            final_image.save(temp_output)
+            
+            # Save a preview PNG (un-flipped version for display)
+            preview_path = f"preview_{uuid.uuid4()}.png"
+            
+            # For preview, use the original processed image before flipping
+            os.system(f'magick {temp_output} -modulate 120,100,100 -monochrome -colors 2 {preview_path}')
+            
+            # For printing, create the flipped BMP
+            os.system(f'magick {temp_output} -modulate 120,100,100 -monochrome -colors 2 -flip BMP3:{output_bmp}')
+            
+            # Store both the BMP and its path for printing
+            self.current_image = Image.open(output_bmp)
+            self.current_bmp_path = output_bmp
+            self.current_length = (self.current_image.height / 203) * 2.54
+            
+            # Clean up temp PNG
+            try:
+                os.remove(temp_output)
+            except:
+                pass
+            
+            # Clean up old preview
+            if self.current_preview and self.current_preview != preview_path:
+                try:
+                    os.remove(self.current_preview)
+                except:
+                    pass
+            
+            self.current_preview = preview_path
+            
+            # Send preview to frontend
+            with open(preview_path, 'rb') as image_file:
+                import base64
+                encoded_string = base64.b64encode(image_file.read()).decode()
+                
+                self.window.emit('preview_ready', {
+                    "preview": f"data:image/png;base64,{encoded_string}",
+                    "length": f"{self.current_length:.1f}"
+                })
+            
+            return f"Image prepared successfully ({self.current_length:.1f}cm)"
+            
+        except Exception as e:
+            return f"Error preparing image: {str(e)}"
 
     def __del__(self):
         # Clean up any remaining preview file
